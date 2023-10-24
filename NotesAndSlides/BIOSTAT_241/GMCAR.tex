@@ -1,0 +1,239 @@
+%%\documentclass[hyperref={pdfpagelabels=false},compress]{beamer}
+\documentclass[10pt]{beamer}
+
+\usetheme{default}
+%\usetheme{metropolis}
+\useoutertheme{noslidenum}
+\usefonttheme[onlylarge]{serif}
+% \usecolortheme{beaver}
+\usecolortheme{UCLAsquirrel}
+%\logo{\includegraphics[height=0.7cm]{/home/sudiptob/texmf/tex/latex/uclabeamer/logo_ucla_cw.png}}
+
+\setbeamerfont*{frametitle}{size=\normalsize,series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+
+\usepackage{lmodern}
+%\usepackage{subfigure}
+\usepackage{subfig}
+\usepackage{pifont}
+\usepackage{tabu}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+%\usepackage{enumitem}
+\usepackage{remreset}
+\usepackage{etoolbox}
+\usepackage{comment} % end and begin comment
+%\usepackage{dtklogos} 
+\usepackage{listings}
+\lstset{breaklines=true} 
+\usepackage{cancel}
+\usepackage{epstopdf}
+\usepackage{overpic}
+\usepackage{url}
+\usepackage{calrsfs}
+\usepackage{mathrsfs}
+\usepackage{epsfig}
+\usepackage{cancel}
+\usepackage{changepage}
+
+\usepackage[english]{babel}
+\usepackage[latin1]{inputenc}
+\usepackage{times}
+\usepackage[T1]{fontenc}
+\usepackage{tikz}
+\usetikzlibrary{arrows}
+\tikzstyle{block}=[draw opacity=0.7,line width=1.4cm]
+\let\code=\texttt
+\let\proglang=\textsf
+
+\newcommand{\gline}{\textcolor{gray}{\hline}}
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+\newcommand{\gcheck}{\textcolor{blue}{\Large \cmark}}
+\newcommand{\rcross}{\textcolor{red}{\Large \xmark}}
+\newcommand{\tkt}{\tilde{K}_\theta}
+\newcommand{\kt}{K_\theta}
+\newcommand{\ind}{\overset{ind}{\sim}}
+\newcommand{\plim}{\overset{p}{\rightarrow}}
+\newcommand{\cx}{\frac {X'X}n}
+\newcommand{\cz}{\frac {Z'Z}n}
+\newcommand{\ccz}{\frac {Z'Z}n - \Sigma_A}
+\newcommand{\czy}{\frac {Z'y}n}
+\newcommand{\cyz}{\frac {y'Z}n}
+\newcommand{\cxy}{\frac {X'y}n}
+\newcommand{\cyx}{\frac {y'X}n}
+\newcommand{\myitem}{\vskip3mm \item}
+%\newcommand{\iid}{\overset{iid}{\sim}}
+
+\newcommand{\calS}{{\cal S}}
+\newcommand{\calA}{{\cal A}}
+\newcommand{\calK}{{\cal K}}
+\newcommand{\calX}{{\cal X}}
+\newcommand{\calD}{{\cal D}}
+\newcommand{\calG}{{\cal G}}
+\newcommand{\calT}{{\cal T}}
+\newcommand{\calU}{{\cal U}}
+\newcommand{\calR}{{\cal R}}
+\newcommand{\tp}{\tilde{p}}
+\newcommand{\tildebC}{\tilde{\bC}}
+\newcommand{\calL}{{\cal L}}
+\newcommand{\calP}{{\cal P}}
+
+\newcommand{\given}{\, | \,}
+
+
+%\newcommand{\T}{\top}
+
+\newcommand{\blue}[1]{{\color{RoyalBlue!90} #1}}
+\newcommand{\red}[1]{{\color{Red} #1}}
+\newcommand{\green}[1]{{\color{Green} #1}}
+\newcommand{\titl}[1]{{\begin{large}\begin{center}#1\end{center}\end{large}}}
+
+\title[BIOSTAT~241] 
+{%
+Spatial Modeling for Areal Data: Spatial Autoregression
+}
+
+\author[Sudipto Banerjee]
+{
+ Sudipto Banerjee
+}
+
+\institute[UCLA]
+{
+  University of California, Los Angeles, USA
+}
+
+\date[]{}
+
+\begin{document}
+\begin{frame}
+ \titlepage
+\end{frame}
+
+\begin{frame}{Hierarchical GLM for Spatial disease mapping}
+	\begin{itemize}
+		\item At unit (region) $i$, we observe response $y_i$ and  covariate $x_i$
+		\item $g(E(y_i)) = x^{\top}_i\beta + w_i $ where $g(\cdot)$ denotes a suitable link function
+%		\metroset{block=fill}
+		\begin{block}{}
+		\[
+		p_2(\beta,\tau_w, \rho) \times N(w \given 0, \tau_w (D-\rho A)) \times \prod_{i=1}^n p_1(y_i\given x_i^{\top}\beta+w_i)
+		\]
+		\end{block}
+		\item $p_1$ denotes the density corresponding to the link $g(\cdot)$
+	\end{itemize}
+\end{frame}
+
+\begin{frame}{CAR models}
+	\begin{itemize}
+		\item CAR model:
+		\begin{equation*}
+		w_i \given w_{-i} \sim N\left(\frac \rho{n_i}\sum_{j \given i \sim j} w_j, \tau_w n_i\right)
+		\end{equation*}
+		\item Apply Brook's Lemma to obtain joint density for $w$
+		\myitem $w=(w_1,w_2,\ldots,w_k)^{\top} \sim N(0, \tau_w (D-\rho A))$ where $D=\mbox{diag}(n_1,n_2,\ldots,n_k)$
+		\only<1-2>{\myitem $\rho = 1 \Rightarrow$ Improper distribution as $(D-A)1 = 0$ \alert{(ICAR)}
+		\begin{itemize}
+		\item Can be still used as a prior for random effects
+		\item Cannot be used directly as a data generating model
+		\end{itemize}}
+		\only<2>{\myitem $\rho <1 \Rightarrow$ Proper distribution with added parameter flexibility}		
+		%\myitem Often oversmooth spatial random effects
+	\end{itemize}
+\end{frame}
+
+\begin{frame}{Multivariate Disease Mapping}
+ 
+\begin{itemize}\setlength{\itemsep}{0.5cm}
+
+\item $y_{ij}$ is the disease count for disease $j$ in county $i$.
+
+\item $x_{ij}$ are explanatory, region-level spatial covariates for disease $j$.
+
+%\item $E_{ij}$'s are expected number of cases (under homogeneity) for disease $j$ in county $i$
+
+%\item For counts of (rare) diseases, poisson regression model:
+
+% \begin{exampleblock}{}
+% \[
+% Y_{ij} \: \: \stackrel{ind} \sim \: \:
+% Poisson(E_{ij}e^{x_{ij}^{\top}\beta_j + \: \phi_{ij}}) \; , \; \: i=1, \ldots, n, \: j=1, \ldots, p.
+% \]
+% \end{exampleblock}
+\begin{block}{}
+\[
+p_2(\beta,\theta) \times N(\phi \given 0, \Sigma_{\theta}) \times \prod_{i=1}^n\prod_{j=1}^p p_1(y_{ij}\given x_{ij}^{\top}\beta_j + \phi_{ij})
+\]
+\end{block}
+
+\item How do we model the $\phi_{ij}$'s?
+
+\end{itemize}
+
+\end{frame}
+
+
+\begin{frame}{Multivariate disease mapping using graphs}
+\begin{picture}(50, 100)         %% Slides use just picture environment
+\put(60,50){\circle{50}} \put(160,50){\circle{50}}
+\put(260,50){\circle{50}} \put(50,50){$\phi_{11}$}
+\put(60,-50){\circle{50}} \put(160,-50){\circle{50}}
+\put(260,-50){\circle{50}} \put(60,25){\line(0, -50){50}}
+\put(160,25){\line(0, -50){50}}\put(260,25){\line(0, -50){50}}
+
+\put(80,30){\line(5, -6){50}} \put(180,30){\line(5, -6){50}}
+\put(240,30){\line(-6, -5){60}} \put(140,25){\line(-6, -5){60}}
+
+\put(90,50){\line(20, 0){40}} \put(190,50){\line(20, 0){40}}
+\put(90,-50){\line(20, 0){40}} \put(190,-50){\line(20, 0){40}}
+
+\put(100,60){\small $\alpha_1$}\put(200,60){\small $\alpha_1$}
+\put(100,-40){\small $\alpha_2$}\put(200,-40){\small $\alpha_2$}
+\put(40,0){\small $\alpha_0$}\put(140,0){\small
+$\alpha_0$}\put(270,0){\small $\alpha_0$}
+
+\put(80,0){\small $\alpha_3$}\put(180,0){\small $\alpha_3$}
+\put(110,20){\small $\alpha_3$}\put(210,20){\small $\alpha_3$}
+
+
+\put(150,50){$\phi_{21}$}\put(250,50){$\phi_{31}$}
+\put(50,-50){$\phi_{12}$}\put(150,-50){$\phi_{22}$}
+\put(250,-50){$\phi_{32}$}
+
+\put(30, 90){\small county 1}\put(130, 90){\small county
+2}\put(230, 90){\small county 3}
+
+\put(300, 50){\small A}\put(300, -50){\small B}
+\end{picture}
+\end{frame}
+
+\begin{frame}{Conditional bivariate CAR: Jin et al. (2005)}
+ \begin{itemize}
+  \item Build a hierarchical bivariate spatial model for $p=2$ outcomes:
+  \begin{align*}
+   N(\phi_1 \given 0, \tau_1(D-\rho_1 A)) \times N(\phi_2 \given C\phi_1, \tau_2(D - \rho_2 A))
+  \end{align*}
+
+  \item $\mbox{E}[\phi_2\given \phi_1] = C\phi_1$. Assume that the elements of $C$ are 
+\[
+c_{ij}=\left\{\begin{array}{ll}   \eta_0 & \mbox{if $j=i$} \\
+\eta_{1} &  \mbox{if $j \sim i$ (i.e., if region $j$ is a neighbor of region $i$)} \\
+0 & \mbox{otherwise}
+\end{array} \right. \; .
+\]
+
+ \item $C = \eta_0 I + \eta_1 A$, where $\eta_0$ and $\eta_1$ control spatial smoothing for cross-covariances.
+ 
+ \item Call this $\mbox{CBCAR}(\rho_1, \rho_2, \eta_0, \eta_1, \tau_1, \tau_2)$. Some special cases emerge:
+    \begin{itemize}
+     \item Separable MCAR     
+     \item Kim, Sun and Tsutakawa (2001): Two-fold CAR model with smoothing of cross-correlations
+    \end{itemize}
+ \item Generalizations: $C = \sum_{j} \eta_j A^{j}$   
+ \end{itemize}
+
+\end{frame}
+
+\end{document}

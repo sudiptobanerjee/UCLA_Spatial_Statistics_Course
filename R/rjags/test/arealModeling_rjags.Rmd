@@ -176,6 +176,14 @@ m2.out <- coda.samples(model=m2, variable.names=model.parameters, n.iter=nSamp)
 
 samps <- do.call(rbind, m2.out)
 
+credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+yFitPosteriorMedians <- CI_yFit[,grep("50%", colnames(CI_yFit))]
+cor(Y, yFitPosteriorMedians) ## correlation between observed and model fitted values 
+plot(Y, yFitPosteriorMedians, xlab="Observed data", ylab="Model fitted data")
+abline(0,1) ## adds the 45 degree (y=x) line to identify departures of fitted values from observations.
+
+
 yFitSamps <- samps[,grep("yFit", colnames(samps))]
 
 G <- sum((Y - colMeans(yFitSamps))^2)
