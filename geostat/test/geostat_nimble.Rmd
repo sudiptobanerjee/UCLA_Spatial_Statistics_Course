@@ -92,7 +92,7 @@ lmCode <- nimbleCode({
     }
 
     for (i in 1:p) { beta[i] ~ dflat()}
-    tausq ~ dgamma(1.0E-5, 1.0E-5)
+    tausq ~ dgamma(a, b)
     sigma <- 1/sqrt(tausq)
 }
 )   
@@ -103,42 +103,44 @@ Define the model parameters to be recognized by the nimble model.
 modelParameters <- c("beta", "tausq", "sigma", "yFit", "yResid")
 ```
 
-We will first fit a simple linear regression with temperature as the dependent variable and the two spatial coordinates as the predictors. Create the data, constants and also a list of initial values. 
+We will first fit a simple linear regression with temperature as the dependent variable and the two spatial coordinates as the predictors. Create the data, constantsi, hyperparameter values and also a list of initial values. 
 ```{r, fit_lm}
 nimbleData <- list(Y = df$temp)
 N <- nrow(df)
 X <- cbind(rep(1, times=N), df$xUTM, df$yUTM)
 p <- ncol(X)
-nimbleConstants <- list(N=N, X=X, p=p)
-nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N))
+a <- 1.0E-3
+b <- 1.0E-3
+nimbleConstants <- list(N=N, X=X, p=p, a=a, b=b)
+nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N)) 
 ```
 
 Create the "nimbleModel" object.
 ```{r, nimble_model}
-rModel <- nimbleModel(code=lmCode, constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
+rModel <- nimbleModel(code=lmCode, name="coloradoLM", constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
 ```
 
-Specify the inputs to `nimbleMCMC`: (i) number of chains to run; (ii) number of iteratiors per chain; and (iii) number of initial iterations to let the chains "burn" (these samples will be discarded and not used for posterior inference).
+Specify the inputs to `nimbleMCMC`: (i) number of chains to run; (ii) number of iterations per chain; and (iii) number of initial iterations to let the chains "burn" (these samples will be discarded and not used for posterior inference).
 ```{r, nimble_mcmc_inputs}
-n_iter = 11000 ## Number of iterations
+n_iter = 11000 ## Number of iterations per chain
 n_chains = 1 ## Number of different chains
 n_burn = 1000 ## Number of initial iterations ("burn" period) for MCMC to converge. These samples will be discarded and not used in posterior inference. 
 ```
 
-Create the `nimbleMCMC` object to compile the code and run the MCMC algorithm. Set `WAIC=TRUE` to compute and store the "Watanabe-Akaike Information Criterion"  model assessment score.
+Create the `nimbleMCMC` object to compile the code and run the MCMC algorithm. We can set `WAIC=TRUE` to compute and store the "Watanabe-Akaike Information Criterion"  model assessment score or calculate it later.
 ```{r, nimble_mcmc}
-mcmc.out <- nimbleMCMC(model = rModel, nchains=n_chains, niter = n_iter, nburnin=n_burn, monitor=modelParameters, WAIC=TRUE)
-```
-
-Find WAIC score.
-```{r, waic}
-mcmc.out$WAIC
+mcmc.out <- nimbleMCMC(model=rModel, monitors=modelParameters, inits=nimbleInits, nchains=n_chains, niter = n_iter, nburnin=n_burn, samplesAsCodaMCMC = TRUE)
 ```
 
 Extract posterior samples:
 ```{r, posterior_samples}
-samps <- rbind(mcmc.out$samples)
+samps <- as.matrix(mcmc.out)
 dim(samps)
+```
+
+Find WAIC score.
+```{r, waic}
+calculateWAIC(samps, rModel)
 ```
 
 Obtain medians and 95% credible intervals for the model parameters from these samples
@@ -153,6 +155,9 @@ CI_beta
 
 CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
 CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+#CI_yFit ##Uncomment to print credible intervals of replicated data
 ```
 
 Get the posterior median of the residuals:
@@ -195,5 +200,111 @@ base.map %>%
         title = "<center>Regression<br> residuals</center>") %>%
     addLayersControl(baseGroup = c("Satellite"), overlayGroups = c("Regression residuals"),
         options = layersControlOptions(collapsed = FALSE))
-
+##knitr::knit_exit()
 ```
+
+Next we will build the Bayesian geostatistics model.
+```{r, geostat_code}
+geostatCode <- nimbleCode({
+        for (i in 1:N) {
+                Y[i] ~ dnorm(mu[i], tausq)
+                mu[i] <- inprod(X[i,1:p], beta[1:p]) + w[i]
+            yFit[i] ~ dnorm(mu[i], tausq)
+            yResid[i] <- Y[i] - mu[i]
+    }
+        
+	w[1:N] ~ dmnorm(zeros[1:N], cov=spCov[1:N,1:N])
+        for (i in 1:p) { beta[i] ~ dflat() }
+
+        sigmasqSp <- 1/(deltasq*tausq)        
+	spCov[1:N,1:N] <- sigmasqSp*spCor[1:N,1:N]
+
+        tausq ~ dgamma(a, b)
+        sigma <- 1/sqrt(tausq)
+}
+)
+```
+
+We collect the model parameters.
+```{r, model_parameters_spatial}
+modelParameters <- c("beta", "tausq", "sigma", "sigmasqSp", "w", "yFit", "yResid")
+```
+
+We modify our nimbleConstants and nimbleInits accordingly.
+```{r, constants_and_inits_spatial}
+Dist <- rdist(coordsUTM)
+phi <- 3/300 ##See where variogram flattens
+spCor <- exp(-phi*Dist)
+deltasq <- 1/11 ##From the variogram get the ratio of the nugget/(sill-nugget)
+zeros <- rep(0, times=N)
+nimbleConstants <- list(N=N, X=X, p=p, a=a, b=b, spCor=spCor, deltasq=deltasq, zeros=zeros)
+nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N), w=rep(0, times=N))
+```
+
+Create the "nimbleModel" object.
+```{r, nimble_model_spatial}
+rModel <- nimbleModel(code=geostatCode, name="coloradoSP", constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
+```
+
+Specify the inputs to `nimbleMCMC`: (i) number of chains to run; (ii) number of iteratiors per chain; and (iii) number of initial iterations to let the chains "burn" (these samples will be discarded and not used for posterior inference).
+```{r, nimble_mcmc_inputs_spatial}
+n_iter = 11000 ## Number of iterations per chain
+n_chains = 1 ## Number of different chains
+n_burn = 1000 ## Number of initial iterations ("burn" period) for MCMC to converge. These samples will be discarded and not used in posterior inference. 
+```
+
+Create the `nimbleMCMC` object to compile the code and run the MCMC algorithm. We can set `WAIC=TRUE` to compute and store the "Watanabe-Akaike Information Criterion"  model assessment score or calculate it later.
+```{r, nimble_mcmc_spatial}
+mcmc.out <- nimbleMCMC(model=rModel, monitors=modelParameters, inits=nimbleInits, nchains=n_chains, niter = n_iter, nburnin=n_burn, samplesAsCodaMCMC = TRUE)
+```
+
+Extract posterior samples:
+```{r, posterior_samples_spatial}
+samps <- as.matrix(mcmc.out)
+dim(samps)
+```
+
+Find WAIC score.
+```{r, waic_spatial}
+calculateWAIC(samps, rModel)
+```
+
+Obtain medians and 95% credible intervals for the model parameters from these samples
+```{r, credible_intervals_spatial}
+credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
+```
+
+Extract credible intervals for specific variable(s):
+```{r, credible_intervals_specific_variables_spatial}
+CI_beta <- credibleIntervals[grep("beta", rownames(credibleIntervals)),]
+CI_beta
+
+CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
+CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+#CI_yFit ##Uncomment to print the credible intervals of replicated data
+
+CI_w <- credibleIntervals[grep("w", rownames(credibleIntervals)),]
+wPosteriorMedians <- CI_w[, grep("50%", colnames(CI_w))]
+```
+
+Map the spatial process.
+```{r, map_spatial_process}
+processSurf <- mba.surf(cbind(coords, wPosteriorMedians), no.X = 200, no.Y = 200,
+    extend = TRUE, sp = TRUE)$xyz.est
+
+proj4string(processSurf) <- "+proj=longlat +datum=WGS84"
+
+processSurf <- raster(processSurf)
+
+pal <- colorNumeric(blue.red, values(processSurf), na.color = "transparent")
+
+base.map %>%
+    addRasterImage(processSurf, colors = pal, opacity = 0.75, group = "Spatial process") %>%
+    addLegend("bottomright", pal = pal, values = values(processSurf), opacity = 0.75,
+        title = "<center>Spatial<br> process</center>") %>%
+    addLayersControl(baseGroup = c("Satellite"), overlayGroups = c("Spatial process"),
+        options = layersControlOptions(collapsed = FALSE))
+```
+

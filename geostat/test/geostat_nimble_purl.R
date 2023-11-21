@@ -59,7 +59,7 @@ lmCode <- nimbleCode({
     }
 
     for (i in 1:p) { beta[i] ~ dflat()}
-    tausq ~ dgamma(1.0E-5, 1.0E-5)
+    tausq ~ dgamma(a, b)
     sigma <- 1/sqrt(tausq)
 }
 )   
@@ -70,21 +70,23 @@ nimbleData <- list(Y = df$temp)
 N <- nrow(df)
 X <- cbind(rep(1, times=N), df$xUTM, df$yUTM)
 p <- ncol(X)
-nimbleConstants <- list(N=N, X=X, p=p)
-nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N))
+a <- 1.0E-3
+b <- 1.0E-3
+nimbleConstants <- list(N=N, X=X, p=p, a=a, b=b)
+nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N)) 
 
-rModel <- nimbleModel(code=lmCode, constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
+rModel <- nimbleModel(code=lmCode, name="coloradoLM", constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
 
-n_iter = 11000 ## Number of iterations
+n_iter = 11000 ## Number of iterations per chain
 n_chains = 1 ## Number of different chains
 n_burn = 1000 ## Number of initial iterations ("burn" period) for MCMC to converge. These samples will be discarded and not used in posterior inference. 
 
-mcmc.out <- nimbleMCMC(model = rModel, nchains=n_chains, niter = n_iter, nburnin=n_burn, monitor=modelParameters, WAIC=TRUE)
+mcmc.out <- nimbleMCMC(model=rModel, monitors=modelParameters, inits=nimbleInits, nchains=n_chains, niter = n_iter, nburnin=n_burn, samplesAsCodaMCMC = TRUE)
 
-mcmc.out$WAIC
-
-samps <- rbind(mcmc.out$samples)
+samps <- as.matrix(mcmc.out)
 dim(samps)
+
+calculateWAIC(samps, rModel)
 
 credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
 
@@ -93,6 +95,9 @@ CI_beta
 
 CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
 CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+#CI_yFit ##Uncomment to print credible intervals of replicated data
 
 CI_yResid <- credibleIntervals[grep("yResid", rownames(credibleIntervals)),]
 yResidPosteriorMedians <- CI_yResid[,grep("50%", colnames(CI_yResid))]
@@ -126,4 +131,76 @@ base.map %>%
         title = "<center>Regression<br> residuals</center>") %>%
     addLayersControl(baseGroup = c("Satellite"), overlayGroups = c("Regression residuals"),
         options = layersControlOptions(collapsed = FALSE))
+##knitr::knit_exit()
 
+geostatCode <- nimbleCode({
+        for (i in 1:N) {
+                Y[i] ~ dnorm(mu[i], tausq)
+                mu[i] <- inprod(X[i,1:p], beta[1:p]) + w[i]
+            yFit[i] ~ dnorm(mu[i], tausq)
+            yResid[i] <- Y[i] - mu[i]
+    }
+        
+	w[1:N] ~ dmnorm(zeros[1:N], cov=spCov[1:N,1:N])
+        for (i in 1:p) { beta[i] ~ dflat() }
+
+        sigmasqSp <- 1/(deltasq*tausq)        
+	spCov[1:N,1:N] <- sigmasqSp*spCor[1:N,1:N]
+
+        tausq ~ dgamma(a, b)
+        sigma <- 1/sqrt(tausq)
+}
+)
+
+modelParameters <- c("beta", "tausq", "sigma", "sigmasqSp", "w", "yFit", "yResid")
+
+Dist <- rdist(coordsUTM)
+phi <- 3/300 ##See where variogram flattens
+spCor <- exp(-phi*Dist)
+deltasq <- 1/11 ##From the variogram get the ratio of the nugget/(sill-nugget)
+zeros <- rep(0, times=N)
+nimbleConstants <- list(N=N, X=X, p=p, a=a, b=b, spCor=spCor, deltasq=deltasq, zeros=zeros)
+nimbleInits <- list(beta=rep(0, times=p), tausq=1.0, yFit=rep(0, times=N), w=rep(0, times=N))
+
+rModel <- nimbleModel(code=geostatCode, name="coloradoSP", constants=nimbleConstants, data=nimbleData, inits=nimbleInits)
+
+n_iter = 11000 ## Number of iterations per chain
+n_chains = 1 ## Number of different chains
+n_burn = 1000 ## Number of initial iterations ("burn" period) for MCMC to converge. These samples will be discarded and not used in posterior inference. 
+
+mcmc.out <- nimbleMCMC(model=rModel, monitors=modelParameters, inits=nimbleInits, nchains=n_chains, niter = n_iter, nburnin=n_burn, samplesAsCodaMCMC = TRUE)
+
+samps <- as.matrix(mcmc.out)
+dim(samps)
+
+calculateWAIC(samps, rModel)
+
+credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
+
+CI_beta <- credibleIntervals[grep("beta", rownames(credibleIntervals)),]
+CI_beta
+
+CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
+CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+#CI_yFit ##Uncomment to print the credible intervals of replicated data
+
+CI_w <- credibleIntervals[grep("w", rownames(credibleIntervals)),]
+wPosteriorMedians <- CI_w[, grep("50%", colnames(CI_w))]
+
+processSurf <- mba.surf(cbind(coords, wPosteriorMedians), no.X = 200, no.Y = 200,
+    extend = TRUE, sp = TRUE)$xyz.est
+
+proj4string(processSurf) <- "+proj=longlat +datum=WGS84"
+
+processSurf <- raster(processSurf)
+
+pal <- colorNumeric(blue.red, values(processSurf), na.color = "transparent")
+
+base.map %>%
+    addRasterImage(processSurf, colors = pal, opacity = 0.75, group = "Spatial process") %>%
+    addLegend("bottomright", pal = pal, values = values(processSurf), opacity = 0.75,
+        title = "<center>Spatial<br> process</center>") %>%
+    addLayersControl(baseGroup = c("Satellite"), overlayGroups = c("Spatial process"),
+        options = layersControlOptions(collapsed = FALSE))
