@@ -12,15 +12,15 @@ date: "2023-10-17"
 rm(list = ls())
 ```
 
-2. Load "nimble" and "coda" packages
+2. Prepare the data by running the "data_prep.R" file in the "src" directory. When preparing the data, it is important to note that "nimble" expects the dependent random variable(s) being modeled to be stored as a separate object from the covariates and other fixed variables. So we create "nimbleData" to store the "Y" and "nimbleConstants" to store the fixed matrix of regressors "X" and other constants.    
+```{r}   
+source("../src/data_prep.R")
+```
+3. Load "nimble" and "coda" packages. Optionally, set the seed.
 ```{r}
 library(nimble)
 library(coda)
-```
-
-3. Prepare the data by running the "data_prep.R" file in the "src" directory. When preparing the data, it is important to note that "nimble" expects the dependent random variable(s) being modeled to be stored as a separate object from the covariates and other fixed variables. So we create "nimbleData" to store the "Y" and "nimbleConstants" to store the fixed matrix of regressors "X" and other constants.    
-```{r}   
-source("../src/data_prep.R")
+set.seed(1234) ##Optional
 ```
 
 4. The code in "data_prep.R" creates "nimbleData" (Y), "nimbleConst" (X) and "nimbleInits". For "nimbleInits", apart from the different model parameters, we also initialize a variable "yFit" that represents the (posterior predictive) model-fitted distribution for each data point, i.e., "yFit[i] ~ dnorm(mu[i], tausq)" in the nimbleCode. 
@@ -35,7 +35,7 @@ We will run 3 chains in our MCMC algorithm. We will need initial values for the 
 5. Set the following variables:
 ```{r}
 n_iter = 11000 ## Number of iterations
-n_chains = 3 ## Number of different chains
+n_chains = length(nimbleInits) ## Number of different chains
 n_burn = 1000 ## Number of initial runs ("burn" period) for MCMC to converge. 
 ```
 
@@ -157,3 +157,59 @@ P
 D <- G+P
 D
 ```
+
+23. Until now we have used a quick route to fitting a linear model in nimble. We will now demonstrate a more systematic route to compile and build a nimble program and then run the MCMC. reate the "nimbleModel" object. Compile it and configure the MCMC
+```{r, nimble_model_geostat_full_compile_and_configure}
+rModel <- nimbleModel(code=lmCode, name="lm_simple", constants=nimbleConstants, data=nimbleData)
+cModel <- compileNimble(rModel)
+conf <- configureMCMC(rModel, monitors=model_parameters)
+MCMC <- buildMCMC(conf)
+cMCMC <- compileNimble(MCMC, project = cModel)
+```
+
+24. Next we run the MCMC and combine the output from the 3 chains into a single matrix whose columns will include the posterior samples corresponding to each parameter.
+```{r, run_MCMC}
+samps <- runMCMC(cMCMC, inits=nimbleInits, nchains=length(nimbleInits), niter=n_iter, nburnin = n_burn, samplesAsCodaMCMC = TRUE)
+samps <- do.call(rbind, samps)
+```
+
+25. Obtain medians and 95% credible intervals for the model parameters from these samples
+```{r, credible_intervals_spatial}
+credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
+```
+
+26. Extract medians and 95% credible intervals for specific model parameters.
+```{r}
+CI_beta <- credibleIntervals[grep("beta", rownames(credibleIntervals)),]
+CI_beta
+
+CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
+CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+## CI_yFit ##Uncomment to see posterior credible intervals of all fitted values.
+```
+
+27. Get all posterior samples of yFit.
+```{r}
+yFitSamps <- samps[,grep("yFit", colnames(samps))]
+```
+
+28. Compute a goodness-of-fit measure.
+```{r}
+G <- sum((Y - colMeans(yFitSamps))^2)
+G
+```
+
+28. Compute a measure of penalty.
+```{r}
+P <- sum(apply(yFitSamps, 2, function (x) {var(x)} ))
+P
+```
+
+29. Compute the model score “D=G+P” for this model. This score is useful for model comparisons. The smaller the score, the better the model.
+```{r}
+D <- G + P
+D
+```
+

@@ -1,6 +1,6 @@
 rm(list = ls())
 
-source("../src/data_prep_areal.R")
+source("../src/data_prep_areal_with_missing.R")
 
 library(nimble)
 library(coda)
@@ -10,7 +10,7 @@ attributes(nimbleConstants)
 attributes(nimbleInits)
 
 n_iter = 11000 ## Number of iterations
-n_chains = 3 ## Number of different chains
+n_chains = 1 ## Number of different chains
 n_burn = 1000 ## Number of initial runs ("burn" period) for MCMC to converge. 
 
 model_parameters = c("beta", "tausq", "sigma", "w", "sigma_sp", "yFit")
@@ -37,13 +37,13 @@ spCode <- nimbleCode({
 )   
 
 rModel <- nimbleModel(code = spCode, constants=nimbleConstants, data=nimbleData)
-mcmc.out <- nimbleMCMC(model = rModel, nchains=n_chains, inits=nimbleInits, niter = n_iter, nburnin=n_burn, monitor=model_parameters)
+mcmc.out <- nimbleMCMC(model = rModel, nchains=n_chains, inits=nimbleInits, niter = n_iter, nburnin=n_burn, monitor=model_parameters, samplesAsCodaMCMC = TRUE)
 ##mcmc.out <- nimbleMCMC(code = spCode, constants=nimbleConstants, data=nimbleData, inits=nimbleInits, nchains=n_chains, niter = n_iter, nburnin=n_burn, monitor=model_parameters) ##The above two steps can be combined into one step
 
 
 attributes(mcmc.out)
 
-samps <- rbind(mcmc.out$chain1, mcmc.out$chain2, mcmc.out$chain3)
+samps <- as.matrix(mcmc.out)
 dim(samps)
 
 credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
@@ -78,7 +78,7 @@ yFitPosteriorMedians <- CI_yFit[,grep("50%", colnames(CI_yFit))]
 caCountySF$ModelFitted <- yFitPosteriorMedians
 caCountySF$ObsData <- Y
 brksModelFitted = quantile(caCountySF$ModelFitted, c(0, 0.2, 0.4, 0.6, 0.8, 1))
-brksObsData = quantile(caCountySF$ObsData, c(0, 0.2, 0.4, 0.6, 0.8, 1))
+brksObsData = quantile(caCountySF$ObsData, c(0, 0.2, 0.4, 0.6, 0.8, 1), na.rm=TRUE)
 
 colorPalette = rev(brewer.pal(5,"RdBu"))
 

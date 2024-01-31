@@ -1,16 +1,17 @@
 rm(list = ls())
 
+source("../src/data_prep.R")
+
 library(nimble)
 library(coda)
-
-source("../src/data_prep.R")
+set.seed(1234) ##Optional
 
 attributes(nimbleData)
 attributes(nimbleConstants)
 attributes(nimbleInits)
 
 n_iter = 11000 ## Number of iterations
-n_chains = 3 ## Number of different chains
+n_chains = length(nimbleInits) ## Number of different chains
 n_burn = 1000 ## Number of initial runs ("burn" period) for MCMC to converge. 
 
 model_parameters = c("beta", "tausq", "sigma", "yFit")
@@ -81,4 +82,35 @@ P <- sum(apply(yFitSamps, 2, function (x) {var(x)} ))
 P
 
 D <- G+P
+D
+
+rModel <- nimbleModel(code=lmCode, name="lm_simple", constants=nimbleConstants, data=nimbleData)
+cModel <- compileNimble(rModel)
+conf <- configureMCMC(rModel, monitors=model_parameters)
+MCMC <- buildMCMC(conf)
+cMCMC <- compileNimble(MCMC, project = cModel)
+
+samps <- runMCMC(cMCMC, inits=nimbleInits, nchains=length(nimbleInits), niter=n_iter, nburnin = n_burn, samplesAsCodaMCMC = TRUE)
+samps <- do.call(rbind, samps)
+
+credibleIntervals <- t(apply(samps, 2, function(x){quantile(x, c(0.50, 0.025, 0.975))}))
+
+CI_beta <- credibleIntervals[grep("beta", rownames(credibleIntervals)),]
+CI_beta
+
+CI_sigma <- credibleIntervals[grep("sigma", rownames(credibleIntervals)),]
+CI_sigma
+
+CI_yFit <- credibleIntervals[grep("yFit", rownames(credibleIntervals)),]
+## CI_yFit ##Uncomment to see posterior credible intervals of all fitted values.
+
+yFitSamps <- samps[,grep("yFit", colnames(samps))]
+
+G <- sum((Y - colMeans(yFitSamps))^2)
+G
+
+P <- sum(apply(yFitSamps, 2, function (x) {var(x)} ))
+P
+
+D <- G + P
 D
