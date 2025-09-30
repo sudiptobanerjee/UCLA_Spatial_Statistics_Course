@@ -1,0 +1,51 @@
+---
+title: "Computing Age-Adjusted Cancer Incidence Rates: The Method of Direct Standardization"
+output: html_document
+---
+
+<style>
+body {
+  text-align: justify;
+}
+</style>
+
+1. First clear memory in R. This is good practice and keeps the R workspace free of conflicts from objects that may have been previously loaded. 
+```{r}
+rm(list=ls())
+```
+
+2. Use the package "surveil" to load some cancer data.
+```{r}   
+library(surveil)
+```
+
+3. Load a cancer dataset and a standardized population data. For the standardized population data, we use the 2000 census. 
+```{r}
+data(cancer)
+cancer_df = subset(cancer, grepl("1999", Year))
+data(standard)
+pop_df = standard
+```
+The "standard" data frame has a variable "standard\_pop" that gives the number of people in each age-group per million people in the population. This is the standardized population using the 2000 census. The "cancer" data frame has a variable "Population" that gives the raw number of people surveilled in each age group in the population. We calculate the age-adjusted standardized incidence rate for cancers as
+$$ 
+\begin{equation}
+SIR = \sum_{k=1}^K \left(\frac{Y_k}{P_k}\right)\times N_k,
+\end{equation}
+$$
+where $k=1,\ldots,K$ indexes $K$ age-groups, $Y_k$ is the number of cancer counts (diagnosed in a given year, say 1999) in age-group $k$, $P_k$ is the population in that age-group (in the same year), and $N_k$ is the standardized population for age-group $k$. The rate calculated using the above equation is scaled per $\sum_{k=1}^K N_k$, i.e., the standardized total population.     
+
+4. The surveil package fits a Bayesian model to estimate disease rates for each age-group and then computes the standardized age-adjusted rate. We will later learn about these Bayesian models. For now, we will demonstrate a direct standardization using a simple empirical estimate of the age-specific cancer incidence rates.  
+```{r}
+cancer_rate = cancer_df$Count/cancer_df$Population 
+standardized_total_pop = sum(pop_df$standard_pop) 
+print(standardized_total_pop)  ##This sums up to 1 million
+pop_rate = pop_df$standard_pop
+```
+The standardized total population sums up to 1 million. This implies that the rate we calculate will be per million people.
+
+5. Calculate the standardized incidence rate we 
+```{r}
+standardized_incidence_rate = sum(cancer_rate*pop_rate)
+print(standardized_incidence_rate)
+```
+
